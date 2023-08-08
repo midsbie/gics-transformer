@@ -44,7 +44,7 @@ def verify_csv_header(reader):
 def upsert_sector(conn, code, name):
     with conn.cursor() as cur:
         cur.execute("""
-            INSERT INTO sectors (code, name) VALUES (%s, %s)
+            INSERT INTO gics_sectors (code, name) VALUES (%s, %s)
             ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name
             RETURNING id;
         """, (code, name))
@@ -54,7 +54,7 @@ def upsert_sector(conn, code, name):
 def upsert_industry_group(conn, code, name, id_sector):
     with conn.cursor() as cur:
         cur.execute("""
-            INSERT INTO industry_groups (code, name, id_sector) VALUES (%s, %s, %s)
+            INSERT INTO gics_industry_groups (code, name, id_gics_sector) VALUES (%s, %s, %s)
             ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name
             RETURNING id;
         """, (code, name, id_sector))
@@ -64,7 +64,7 @@ def upsert_industry_group(conn, code, name, id_sector):
 def upsert_industry(conn, code, name, id_industry_group):
     with conn.cursor() as cur:
         cur.execute("""
-            INSERT INTO industries (code, name, id_industry_group) VALUES (%s, %s, %s)
+            INSERT INTO gics_industries (code, name, id_gics_industry_group) VALUES (%s, %s, %s)
             ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name
             RETURNING id;
         """, (code, name, id_industry_group))
@@ -74,7 +74,7 @@ def upsert_industry(conn, code, name, id_industry_group):
 def upsert_sub_industry(conn, code, name, description, id_industry):
     with conn.cursor() as cur:
         cur.execute("""
-            INSERT INTO sub_industries (code, name, description, id_industry) VALUES (%s, %s, %s, %s)
+            INSERT INTO gics_sub_industries (code, name, description, id_gics_industry) VALUES (%s, %s, %s, %s)
             ON CONFLICT (code) DO
               UPDATE SET name = EXCLUDED.name,
                          description = EXCLUDED.description;
