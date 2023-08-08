@@ -112,5 +112,4 @@ def main(args):
 
 if __name__ == '__main__':
     parser = create_parser()
-    args = parser.parse_args()
-    main(args)
+    main(parser.parse_args())
