@@ -2,6 +2,7 @@ import argparse
 import re
 
 import pandas as pd
+import numpy as np
 from openpyxl import load_workbook
 
 
@@ -23,8 +24,11 @@ def create_parser():
 
 def get_codes_to_remove(filename, sheet):
     wb = load_workbook(filename=filename, data_only=True)
-    ws = wb[sheet]
+    if sheet >= len(wb.sheetnames):
+        raise IndexError(
+            f"Sheet index {sheet} is out of range. Available sheets: {wb.sheetnames}")
 
+    ws = wb[wb.sheetnames[sheet]]
     pattern = r'\(.*?\bdiscontinued\b.*?\)'
     codes = []
 
@@ -62,14 +66,14 @@ def main(args):
 
     # Identify header row
     header_row = df[df.apply(
-        lambda x: x.map(lambda y: "Sector" in str(y))).any(axis=1)].index[0]
+        lambda y: y.map(lambda x: "Sector" in str(x))).any(axis=1)].index[0]
 
-    # Reset the header
+    # Remove rows above the dataframe's header
     df.columns = df.loc[header_row]
     df = df.loc[header_row + 1:]
     df.reset_index(drop=True, inplace=True)
 
-    # Give header columns appropriate names, adding a column for the industry
+    # Give header columns appropriate names and add a column for the industry
     # description.
     columns_list = df.columns.tolist()
     normalize_merged_cols(columns_list, 'Sector', 'sector_code', 'sector_name')
@@ -80,35 +84,46 @@ def main(args):
     normalize_merged_cols(columns_list, 'Sub-Industry',
                           'sub_industry_code', 'sub_industry_name')
     df.columns = columns_list
+
+    # Force string cells that are blank to NA
+    df = df.apply(lambda col: col.map(lambda x: np.nan if isinstance(
+        x, str) and re.match(r'^\s*$', x) else x))
+
+    # Copy industry descriptions from subsequent rows into the
+    # 'industry_description' column.  This process identifies rows where the
+    # 'sub_industry_code' is missing (indicating description rows) and
+    # concatenates these descriptions into the 'industry_description' field of
+    # the preceding row that contains a 'sub_industry_code'. After
+    # concatenation, these description rows will be skipped in the iteration to
+    # ensure they are not processed again.
     df['industry_description'] = ''
+    i = 0
+    while i < len(df):
+        if pd.isna(df.at[i, 'sub_industry_code']):
+            j = i
+            while j < len(df) and pd.isna(df.at[j, 'sub_industry_code']):
+                df.at[i-1, 'industry_description'] += " " + \
+                    str(df.at[j, 'sub_industry_name']).strip()
+                j += 1
+            i = j
+        else:
+            i += 1
 
-    # Copy industry description from the next row
-    for i, row in df.iterrows():
-        if i < len(df) - 1:
-            df.at[i, 'industry_description'] = df.at[i + 1, 'sub_industry_name']
-
-    # Remove every second row containing the descriptions that we've just copied
-    df = df.iloc[::2].reset_index(drop=True)
+    # Remove rows that do not contain a sub_industry_code
+    df = df[df['sub_industry_code'].notna()].reset_index(drop=True)
 
     # Remove rows that refer to classifications that have been discontinued
     if args.drop_discontinued and len(codes_to_remove) > 0:
         df = df[~df['sub_industry_code'].isin(codes_to_remove)]
 
-    # Fix whitespace before filling NA
-    df = df.apply(lambda x: x.map(
-        lambda y: y.strip() if isinstance(y, str) else y))
-    df = df.apply(lambda x: x.map(lambda y: y.replace(
-        '\n', '') if isinstance(y, str) else y))
-    df['sector_code'] = df['sector_code'].replace('', pd.NA)
-
     # Make it so all NA columns inherit the content of the preceding row
-    df['sector_code'] = df['sector_code'].ffill()
+    df['sector_code'] = df['sector_code'].ffill().astype(int)
     df['sector_name'] = df['sector_name'].ffill()
-    df['industry_group_code'] = df['industry_group_code'].ffill()
+    df['industry_group_code'] = df['industry_group_code'].ffill().astype(int)
     df['industry_group_name'] = df['industry_group_name'].ffill()
-    df['industry_code'] = df['industry_code'].ffill()
+    df['industry_code'] = df['industry_code'].ffill().astype(int)
     df['industry_name'] = df['industry_name'].ffill()
-    df['sub_industry_code'] = df['sub_industry_code'].ffill()
+    df['sub_industry_code'] = df['sub_industry_code'].ffill().astype(int)
     df['sub_industry_name'] = df['sub_industry_name'].ffill()
 
     # Fixing more oddities:
@@ -116,6 +131,15 @@ def main(args):
     df = df.replace(r'\s\s+', ' ', regex=True)
     # - Remove in-column annotations
     df = df.replace(r'\([^)]*\)', '', regex=True)
+    # - Strip wrapped quotes
+    df = df.apply(lambda y: y.map(
+        lambda x: x[1:-1] if isinstance(x, str) and re.match(r'^".*"$', x) else x))
+
+    # Fix whitespace
+    df = df.apply(lambda y: y.map(
+        lambda x: x.strip() if isinstance(x, str) else x))
+    df = df.apply(lambda y: y.map(lambda x: x.replace(
+        '\n', '') if isinstance(x, str) else x))
 
     # Done!  Persist to CSV file.
     df.to_csv(args.output, index=False)
