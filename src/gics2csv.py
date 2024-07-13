@@ -61,8 +61,8 @@ def main(args):
     df = pd.read_excel(args.filename, sheet_name=args.sheet, header=None)
 
     # Identify header row
-    header_row = df[df.applymap(
-        lambda x: "Sector" in str(x)).any(axis=1)].index[0]
+    header_row = df[df.apply(
+        lambda x: x.map(lambda y: "Sector" in str(y))).any(axis=1)].index[0]
 
     # Reset the header
     df.columns = df.loc[header_row]
@@ -95,28 +95,27 @@ def main(args):
         df = df[~df['sub_industry_code'].isin(codes_to_remove)]
 
     # Fix whitespace before filling NA
-    df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
-    df = df.applymap(lambda x: x.replace('\n', '')
-                     if isinstance(x, str) else x)
-    df['sector_code'].replace('', pd.NA, inplace=True)
+    df = df.apply(lambda x: x.map(
+        lambda y: y.strip() if isinstance(y, str) else y))
+    df = df.apply(lambda x: x.map(lambda y: y.replace(
+        '\n', '') if isinstance(y, str) else y))
+    df['sector_code'] = df['sector_code'].replace('', pd.NA)
 
     # Make it so all NA columns inherit the content of the preceding row
-    df['sector_code'] = df['sector_code'].fillna(method='ffill')
-    df['sector_name'] = df['sector_name'].fillna(method='ffill')
-    df['industry_group_code'] = df['industry_group_code'].fillna(
-        method='ffill')
-    df['industry_group_name'] = df['industry_group_name'].fillna(
-        method='ffill')
-    df['industry_code'] = df['industry_code'].fillna(method='ffill')
-    df['industry_name'] = df['industry_name'].fillna(method='ffill')
-    df['sub_industry_code'] = df['sub_industry_code'].fillna(method='ffill')
-    df['sub_industry_name'] = df['sub_industry_name'].fillna(method='ffill')
+    df['sector_code'] = df['sector_code'].ffill()
+    df['sector_name'] = df['sector_name'].ffill()
+    df['industry_group_code'] = df['industry_group_code'].ffill()
+    df['industry_group_name'] = df['industry_group_name'].ffill()
+    df['industry_code'] = df['industry_code'].ffill()
+    df['industry_name'] = df['industry_name'].ffill()
+    df['sub_industry_code'] = df['sub_industry_code'].ffill()
+    df['sub_industry_name'] = df['sub_industry_name'].ffill()
 
     # Fixing more oddities:
     # - Collapse multiple spaces into one
-    df.replace(r'\s\s+', ' ', regex=True, inplace=True)
+    df = df.replace(r'\s\s+', ' ', regex=True)
     # - Remove in-column annotations
-    df.replace(r'\([^)]*\)', '', regex=True, inplace=True)
+    df = df.replace(r'\([^)]*\)', '', regex=True)
 
     # Done!  Persist to CSV file.
     df.to_csv(args.output, index=False)
