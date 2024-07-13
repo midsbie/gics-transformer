@@ -1,5 +1,6 @@
+numpy
+openpyxl
 pandas
 # Requires the following system packages to be installed:
 #   sudo apt-get install libpq-dev
 psycopg2
-openpyxl
